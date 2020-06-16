@@ -66,7 +66,7 @@ class ElasticSearchEngine extends Engine
     protected function performSearch(Builder $builder, array $options = [])
     {
         $params = array_merge_recursive($this->getRequestBody($builder->model),[
-            'scroll' => '30s',
+            // 'scroll' => '30s',
             'body'  => [
                 'from' => 0,
                 'size' => 5000,
@@ -89,7 +89,7 @@ class ElasticSearchEngine extends Engine
 
         if (empty($builder->query) && empty($builder->wheres)) {
             $params = array_merge_recursive($this->getRequestBody($builder->model),[
-                'scroll' => '30s',
+                // 'scroll' => '30s',
                 'body'  => [
                     'from' => 0,
                     'size' => 5000,
