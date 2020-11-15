@@ -63,68 +63,69 @@ class ElasticSearchEngine extends Engine
         return $this->performSearch($builder);
     }
 
+    /**
+     * Perform search
+     *
+     * @param       \Laravel\Scout\Builder  $builder
+     * @param       array $options
+     *
+     * @return      mixed
+     */
     protected function performSearch(Builder $builder, array $options = [])
     {
-        $params = array_merge_recursive($this->getRequestBody($builder->model),[
-            // 'scroll' => '30s',
+        // building query using Boolean query DSL:
+        // https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-bool-query.html
+        $boolMustArr = [];
+        $sort = [['id' => ['order' => 'desc']]]; // default sort order
+
+        // check for query
+        if (!empty($builder->query)) {
+            $boolMustArr[] = [
+                'multi_match' => [
+                    'query'     => $builder->query ?? '',
+                    'fields'    => $this->getSearchableFields($builder->model),
+                    'type'      => 'phrase_prefix',
+                ],
+            ];
+        } else {
+            $boolMustArr[] = [
+                'must' => [
+                    'match_all' => new \stdClass(),
+                ]
+            ];
+        }
+
+        // check for where conditions
+        if (count($builder->wheres) > 0) {
+            foreach ($builder->wheres as $key => $value) {
+                if ($value && is_array($value)) {
+                    $boolMustArr[] = ['match' => [$key => $value[0]]];
+                } elseif ($value) {
+                    $boolMustArr[] = ['match' => [$key => $value]];
+                }
+            }
+        }
+
+        // check for sort
+        if (count($builder->orders) > 0) {
+            $sort = collect($builder->orders)->map(function($value){
+                return [$value['column'] => ['order' => $value['direction']]];
+            })->toArray();
+        }
+
+        // create the request body
+        $params = $this->getRequestBody($builder->model, [
             'body'  => [
                 'from' => 0,
                 'size' => 5000,
                 'query' => [
                     'bool' => [
-                        'must' => [
-                            'multi_match' => [
-                                'query'     => $builder->query ?? '',
-                                'fields'    => $this->getSearchableFields($builder->model),
-                                'type'      => 'phrase_prefix',
-                            ]
-                        ]
-                    ]
-                ],
-                'sort' => [
-                    'id' => ['order' => 'desc']
-                ]
-            ]
-        ], $options);
-
-        if (empty($builder->query) && empty($builder->wheres)) {
-            $params = array_merge_recursive($this->getRequestBody($builder->model),[
-                // 'scroll' => '30s',
-                'body'  => [
-                    'from' => 0,
-                    'size' => 5000,
-                    'query' => [
-                        'bool' => [
-                            'must' => [
-                                'match_all' => new \stdClass(),
-                            ]
-                        ]
+                        'must' => $boolMustArr
                     ],
-                    'sort' => [
-                        'id' => ['order' => 'desc']
-                    ]
-                ]
-            ], $options);
-        }
-
-        if (count($builder->wheres) > 0) {
-            $data = [];
-            foreach ($builder->wheres as $key => $value) {
-                if ($value && is_array($value)) {
-                    array_push($data, ['match' => [$key => $value[0]]]);
-                } elseif ($value) {
-                    array_push($data, ['match' => [$key => $value]]);
-                }
-            }
-
-            $params['body']['query']['bool']['must'] = $data; // filter
-        }
-
-        if (count($builder->orders) > 0) {
-            $params['body']['sort'] = collect($builder->orders)->map(function($value){
-                return [$value['column'] => ["order" => $value['direction']]];
-            })->toArray();
-        }
+                ],
+                'sort' => $sort,
+            ]
+        ]);
 
         if ($builder->callback) {
             return call_user_func(
