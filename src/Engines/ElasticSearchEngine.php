@@ -26,9 +26,9 @@ class ElasticSearchEngine extends Engine
     public function update($models)
     {
         $models->each(function ($model) {
-            $params =  $this->getRequestBody($model, [
-                'id'    => $model->id,
-                'body'  => $model->toSearchableArray()
+            $params = $this->getRequestBody($model, [
+                'id'   => $model->id,
+                'body' => $model->toSearchableArray(),
             ]);
 
             $this->client->index($params);
@@ -45,7 +45,7 @@ class ElasticSearchEngine extends Engine
     {
         $models->each(function ($model) {
             $params = $this->getRequestBody($model, [
-                'id'    => $model->id
+                'id' => $model->id,
             ]);
 
             $this->client->delete($params);
@@ -63,68 +63,72 @@ class ElasticSearchEngine extends Engine
         return $this->performSearch($builder);
     }
 
+    /**
+     * Perform search
+     *
+     * @param       \Laravel\Scout\Builder  $builder
+     * @param       array $options
+     *
+     * @return      mixed
+     */
     protected function performSearch(Builder $builder, array $options = [])
     {
-        $params = array_merge_recursive($this->getRequestBody($builder->model),[
-            // 'scroll' => '30s',
-            'body'  => [
-                'from' => 0,
-                'size' => 5000,
-                'query' => [
-                    'bool' => [
-                        'must' => [
-                            'multi_match' => [
-                                'query'     => $builder->query ?? '',
-                                'fields'    => $this->getSearchableFields($builder->model),
-                                'type'      => 'phrase_prefix',
-                            ]
-                        ]
-                    ]
-                ],
-                'sort' => [
-                    'id' => ['order' => 'desc']
-                ]
-            ]
-        ], $options);
+        // building query using Boolean query DSL:
+        // https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-bool-query.html
+        $boolMustArr = [];
+        $sort        = [['id' => ['order' => 'desc']]]; // default sort order
 
-        if (empty($builder->query) && empty($builder->wheres)) {
-            $params = array_merge_recursive($this->getRequestBody($builder->model),[
-                // 'scroll' => '30s',
-                'body'  => [
-                    'from' => 0,
-                    'size' => 5000,
-                    'query' => [
-                        'bool' => [
-                            'must' => [
-                                'match_all' => new \stdClass(),
-                            ]
-                        ]
-                    ],
-                    'sort' => [
-                        'id' => ['order' => 'desc']
-                    ]
-                ]
-            ], $options);
+        // check for query
+        if (!empty($builder->query)) {
+            $boolMustArr[] = [
+                'multi_match' => [
+                    'query'  => $builder->query ?? '',
+                    'fields' => $this->getSearchableFields($builder->model),
+                    'type'   => 'phrase_prefix',
+                ],
+            ];
+        } else {
+            $boolMustArr[] = [
+                'must' => [
+                    'match_all' => new \stdClass(),
+                ],
+            ];
         }
 
+        // check for where conditions
         if (count($builder->wheres) > 0) {
-            $data = [];
             foreach ($builder->wheres as $key => $value) {
                 if ($value && is_array($value)) {
-                    array_push($data, ['match' => [$key => $value[0]]]);
+                    $boolMustArr[] = ['match' => [$key => $value[0]]];
                 } elseif ($value) {
-                    array_push($data, ['match' => [$key => $value]]);
+                    $boolMustArr[] = ['match' => [$key => $value]];
                 }
             }
-
-            $params['body']['query']['bool']['must'] = $data; // filter
         }
 
+        // check for sort
         if (count($builder->orders) > 0) {
-            $params['body']['sort'] = collect($builder->orders)->map(function($value){
-                return [$value['column'] => ["order" => $value['direction']]];
+            $sort = collect($builder->orders)->map(function ($value) {
+                return [$value['column'] => ['order' => $value['direction']]];
             })->toArray();
         }
+
+        // create the request body
+        $params = array_merge_recursive(
+            $this->getRequestBody($builder->model, [
+                'body' => [
+                    'from'  => 0,
+                    'size'  => 5000,
+                    'query' => [
+                        'bool' => [
+                            'must' => $boolMustArr,
+                        ],
+                    ],
+                    'sort'  => $sort,
+                ],
+            ]),
+            $options
+        );
 
         if ($builder->callback) {
             return call_user_func(
@@ -148,8 +152,8 @@ class ElasticSearchEngine extends Engine
     public function paginate(Builder $builder, $perPage, $page)
     {
         return $this->performSearch($builder, [
-            'from'  => ($page - 1) * $perPage,
-            'size'  => $perPage
+            'from' => ($page - 1) * $perPage,
+            'size' => $perPage,
         ]);
     }
 
@@ -178,7 +182,7 @@ class ElasticSearchEngine extends Engine
             return $model->newCollection();
         };
 
-        $objectIds = collect($hits)->pluck('_id')->values()->all();
+        $objectIds         = collect($hits)->pluck('_id')->values()->all();
         $objectIdPositions = array_flip($objectIds);
 
         return $model->getScoutModelsByIds(
@@ -210,11 +214,11 @@ class ElasticSearchEngine extends Engine
     public function flush($model)
     {
         $this->client->indices()->delete([
-            'index' => $model->searchableAs()
+            'index' => $model->searchableAs(),
         ]);
 
         Artisan::call('hero-search:elasticsearch:create', [
-            'model' => get_class($model)
+            'model' => get_class($model),
         ]);
     }
 
