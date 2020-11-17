@@ -87,12 +87,6 @@ class ElasticSearchEngine extends Engine
                     'type'   => 'phrase_prefix',
                 ],
             ];
-        } else {
-            $boolMustArr[] = [
-                'must' => [
-                    'match_all' => new \stdClass(),
-                ],
-            ];
         }
 
         // check for where conditions
