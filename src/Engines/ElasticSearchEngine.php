@@ -226,7 +226,7 @@ class ElasticSearchEngine extends Engine
     private function getRequestBody($model, array $options = [])
     {
         return array_merge_recursive([
-            'index' => $model->searchableAs(),
+            'index' => config('app.env_name', config('app.env')) . '_' . $model->searchableAs(),
             'type'  => $model->searchableAs(),
         ], $options);
     }
