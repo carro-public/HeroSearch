@@ -246,7 +246,7 @@ class ElasticSearchEngine extends Engine
         
         // If prefix is not null, append the $prefix before searchableAs
         $prefix = config('herosearch.index_prefix', null);
-        if (! is_null($prefix)) {
+        if (!is_null($prefix)) {
             return $prefix . '_' . $model->searchableAs();
         }
 
