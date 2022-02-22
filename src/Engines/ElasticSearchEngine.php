@@ -226,9 +226,32 @@ class ElasticSearchEngine extends Engine
     private function getRequestBody($model, array $options = [])
     {
         return array_merge_recursive([
-            'index' => $model->searchableAs(),
+            'index' => $this->getIndexName($model),
             'type'  => $model->searchableAs(),
         ], $options);
+    }
+
+    /**
+     * Get the ES index name
+     * 1st esIndexName will be given priority
+     * 2nd herosearch.index_prefix
+     * 3rd searchableAs as default
+     * @param $model
+     * @return string
+     */
+    private function getIndexName($model) {
+        if (method_exists($model, 'esIndexName')) {
+            return $model->esIndexName();
+        }
+        
+        // If prefix is not null, append the $prefix before searchableAs
+        $prefix = config('herosearch.index_prefix', null);
+        if (!is_null($prefix)) {
+            return $prefix . '_' . $model->searchableAs();
+        }
+
+        // Return searchableAs as default
+        return $model->searchableAs();
     }
 
     /**
