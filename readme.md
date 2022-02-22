@@ -28,6 +28,10 @@ In your `.env` file, add host and port of your running elasticsearch.
 ```
 ELASTICSEARCH_HOST=your_elasticsearch_host
 ELASTICSEARCH_PORT=your_elasticsearch_port
+
+# This prefix will be used to append before the index name
+# To separate environement when sharing ES instance
+ELASTICSEARCH_INDEX_PREFIX=prefix
 ```
 
 Update scout driver to `elasticsearch` as well.
