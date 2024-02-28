@@ -3,6 +3,7 @@
 namespace CarroPublic\HeroSearch\Engines;
 
 use Elasticsearch\Client;
+use InvalidArgumentException;
 use Laravel\Scout\Builder;
 use Illuminate\Support\Arr;
 use Laravel\Scout\Engines\Engine;
@@ -266,5 +267,64 @@ class ElasticSearchEngine extends Engine
         }
 
         return $model->searchableFields();
+    }
+
+    public function lazyMap(Builder $builder, $results, $model)
+    {
+        if (count($hits = Arr::get($results, 'hits.hits')) === 0) {
+            return $model->newCollection();
+        }
+
+        $objectIds = collect($hits)->pluck('_id')->values()->all();
+        $objectIdPositions = array_flip($objectIds);
+
+        return $model->getScoutModelsByIds(
+            $builder, $objectIds
+        )->filter(function ($model) use ($objectIds) {
+            return in_array($model->getScoutKey(), $objectIds);
+        })->sortBy(function ($model) use ($objectIdPositions) {
+            return $objectIdPositions[$model->getScoutKey()];
+        })->values();
+    }
+
+    public function createIndex($name, array $options = [])
+    {
+        if (isset($options['primaryKey'])) {
+            throw new InvalidArgumentException('It is not possible to change the primary key name');
+        }
+
+        $this->client->indices()->create([
+            'index' => $name,
+            'body'  => [
+                'settings' => array_merge_recursive([
+                    'index' => [
+                        'analysis'  => [
+                            'filter' => [
+                                'words_splitter' => [
+                                    'catenate_all'      => 'true',
+                                    'type'              => 'word_delimiter',
+                                    'preserve_original' => 'true'
+                                ]
+                            ],
+                            'analyzer' => [
+                                'default' => [
+                                    'filter'       => ['lowercase', 'words_splitter'],
+                                    'char_filter'  => ['html_strip'],
+                                    'type'         => 'custom',
+                                    'tokenizer'    => 'standard'
+                                ]
+                            ]
+                        ]
+                    ]
+                ], $options)
+            ]
+        ]);
+    }
+
+    public function deleteIndex($name)
+    {
+        $this->client->indices()->delete([
+            'index' => $name
+        ]);
     }
 }
